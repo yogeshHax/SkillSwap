@@ -29,20 +29,23 @@ export default function Navbar() {
       initial={{ y: -80 }}
       animate={{ y: 0 }}
       transition={{ duration: 0.4 }}
-      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
-        scrolled || !isLanding
-          ? 'glass-dark shadow-card border-b border-white/5'
-          : 'bg-transparent'
-      }`}
+      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${scrolled || !isLanding
+        ? 'glass-dark shadow-card border-b border-white/5'
+        : 'bg-transparent'
+        }`}
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
-          <Link to="/" className="flex items-center gap-2.5 group flex-shrink-0">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-400 to-accent-500 flex items-center justify-center shadow-brand group-hover:shadow-lg transition-all">
-              <Zap size={18} className="text-white" />
+          <Link to="/" className="flex items-center gap-3 group flex-shrink-0">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#551fa4] to-[#0ea5e9] flex items-center justify-center shadow-[0_0_15px_rgba(85,31,164,0.6)] group-hover:shadow-[0_0_25px_rgba(14,165,233,0.8)] transition-all duration-300 transform group-hover:scale-105 border border-white/10">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+              </svg>
             </div>
-            <span className="text-lg font-bold text-gradient hidden sm:block">SkillSwap</span>
+            <span style={{ fontFamily: "'Caveat', cursive", fontSize: '2.8rem', transform: 'translateY(1px)' }} className="font-bold text-white tracking-wide drop-shadow-md">
+              SkillSwap
+            </span>
           </Link>
 
           {/* Nav links */}
@@ -51,11 +54,10 @@ export default function Navbar() {
               <Link
                 key={l.to}
                 to={l.to}
-                className={`px-3 py-2 text-sm font-medium rounded-lg transition-all ${
-                  location.pathname === l.to
-                    ? 'text-brand-400 bg-brand-500/10'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
-                }`}
+                className={`px-3 py-2 text-sm font-medium rounded-lg transition-all ${location.pathname === l.to
+                  ? 'text-brand-400 bg-brand-500/10'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+                  }`}
               >
                 {l.label}
               </Link>

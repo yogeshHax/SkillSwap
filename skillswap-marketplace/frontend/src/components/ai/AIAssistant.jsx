@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Send, Bot, User, Sparkles, RefreshCw, X } from 'lucide-react'
 import { aiService } from '../../services/index'
 import { askGeminiWithHistory } from '../../services/geminiService'
-import { MOCK_PROVIDERS } from '../../utils/helpers'
+import { useProviders } from '../../hooks/useApi'
 
 const SUGGESTED = [
   'Find me a React developer',
@@ -16,9 +16,12 @@ const WELCOME = "Hi! I'm your SkillSwap AI assistant. I can help you find the pe
 
 export default function AIAssistant({ floating = false, onClose }) {
   const [messages, setMessages] = useState([{ role: 'assistant', content: WELCOME }])
-  const [input, setInput]     = useState('')
+  const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const messagesEndRef = useRef(null)
+
+  const { data: providersData } = useProviders({ limit: 50 })
+  const providers = providersData?.providers || []
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -37,22 +40,24 @@ export default function AIAssistant({ floating = false, onClose }) {
     try {
       // ── Primary: backend /api/ai/recommend ───────────
       const result = await aiService.recommend({ requirement: text })
-      const recs   = result?.recommendations || []
-      let reply    = result?.summary || 'Here are my recommendations:'
+      const recs = result?.recommendations || []
+      let reply = result?.summary || 'Here are my recommendations:'
       if (recs.length > 0) {
         reply += '\n\n' + recs.slice(0, 3).map((r, i) =>
           `${i + 1}. **${r.title}** by ${r.provider}\n` +
           `⭐ ${r.rating} · ${r.price} · Match: ${r.matchScore}%\n` +
           r.reasoning
         ).join('\n\n')
+      } else {
+        reply += '\n\nActually, I could not find any providers matching precisely that criteria. Try adjusting your search!'
       }
       addMsg('assistant', reply)
     } catch {
       // ── Fallback: direct Gemini ───────────────────────
       try {
-        const ctx = `Available providers: ${MOCK_PROVIDERS.map(p =>
+        const ctx = `Available providers: ${providers.map(p =>
           `${p.name} (${p.category}, skills: ${p.skills?.join(', ')}, ` +
-          `rating: ${p.rating}, $${p.hourlyRate}/hr, location: ${p.location})`
+          `rating: ${p.rating}, $${p.hourlyRate}/hr, location: ${p.locationStr})`
         ).join('; ')}`
         const reply = await askGeminiWithHistory([...messages, userMsg], ctx)
         addMsg('assistant', reply)
@@ -60,7 +65,7 @@ export default function AIAssistant({ floating = false, onClose }) {
         // ── Static fallback ───────────────────────────
         addMsg('assistant',
           "I'm having trouble connecting right now. Here are some popular providers:\n\n" +
-          MOCK_PROVIDERS.slice(0, 3).map(p =>
+          providers.slice(0, 3).map(p =>
             `• **${p.name}** — ${p.skills?.join(', ')} — $${p.hourlyRate}/hr — ⭐${p.rating}`
           ).join('\n')
         )
@@ -112,9 +117,8 @@ export default function AIAssistant({ floating = false, onClose }) {
                   <Bot size={14} className="text-white" />
                 </div>
               )}
-              <div className={`max-w-[85%] px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed ${
-                msg.role === 'user' ? 'chat-bubble-user text-white' : 'glass text-slate-200 border border-white/5'
-              }`}>
+              <div className={`max-w-[85%] px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed ${msg.role === 'user' ? 'chat-bubble-user text-white' : 'glass text-slate-200 border border-white/5'
+                }`}>
                 {msg.content.split('\n').map((line, j) => (
                   <span key={j}>
                     {line.replace(/\*\*(.*?)\*\*/g, '$1')}

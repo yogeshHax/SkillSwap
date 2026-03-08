@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { SlidersHorizontal, X } from 'lucide-react'
@@ -7,23 +7,31 @@ import { useDebounce } from '../hooks/useUtils'
 import SearchBar from '../components/common/SearchBar'
 import ProviderCard from '../components/common/ProviderCard'
 import { SkeletonList } from '../components/common/FullPageLoader'
-import { CATEGORIES, MOCK_PROVIDERS, normalizeProvider } from '../utils/helpers'
+import { CATEGORIES, normalizeProvider } from '../utils/helpers'
 
 const SORT_OPTIONS = [
-  { value: 'rating',     label: 'Highest Rated' },
-  { value: 'price_asc',  label: 'Price: Low to High' },
+  { value: 'rating', label: 'Highest Rated' },
+  { value: 'price_asc', label: 'Price: Low to High' },
   { value: 'price_desc', label: 'Price: High to Low' },
-  { value: 'reviews',    label: 'Most Reviewed' },
+  { value: 'reviews', label: 'Most Reviewed' },
 ]
 
 export default function ExplorePage() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const [query,        setQuery]        = useState(searchParams.get('q') || '')
-  const [category,     setCategory]     = useState(searchParams.get('category') || '')
-  const [sort,         setSort]         = useState('rating')
-  const [showFilters,  setShowFilters]  = useState(false)
-  const [priceRange,   setPriceRange]   = useState([0, 500])
+  const [query, setQuery] = useState(searchParams.get('q') || '')
+  const [category, setCategory] = useState(searchParams.get('category') || '')
+  const [sort, setSort] = useState('rating')
+  const [showFilters, setShowFilters] = useState(false)
+  const [priceRange, setPriceRange] = useState([0, 500])
+  const [available, setAvailable] = useState(false)
   const debouncedQuery = useDebounce(query, 400)
+
+  useEffect(() => {
+    const q = searchParams.get('q') || ''
+    const c = searchParams.get('category') || ''
+    if (q !== query) setQuery(q)
+    if (c !== category) setCategory(c)
+  }, [searchParams])
 
   const params = {
     q: debouncedQuery,
@@ -35,29 +43,28 @@ export default function ExplorePage() {
 
   const { data, isLoading } = useProviders(params)
 
-  // Use real API data, fall back to filtered mock data
+  // Use real API data, no mock fallbacks
   const rawProviders = data?.providers?.length
     ? data.providers
-    : MOCK_PROVIDERS.filter(p => {
-        if (category && p.category !== category) return false
-        if (debouncedQuery) {
-          const q = debouncedQuery.toLowerCase()
-          if (!p.name.toLowerCase().includes(q) &&
-              !(p.skills || []).some(s => s.toLowerCase().includes(q))) return false
-        }
-        return true
-      })
+    : []
 
   const providers = rawProviders.map(normalizeProvider)
 
-  const handleSearch = ({ query: q }) => {
-    setQuery(q)
+  const updateFilters = (newCat, newQ) => {
     setSearchParams(prev => {
       const n = new URLSearchParams(prev)
-      if (q) n.set('q', q); else n.delete('q')
+      if (newCat !== undefined) {
+        if (newCat) n.set('category', newCat); else n.delete('category')
+      }
+      if (newQ !== undefined) {
+        if (newQ) n.set('q', newQ); else n.delete('q')
+      }
       return n
     })
   }
+
+  const handleSearch = ({ query: q }) => updateFilters(undefined, q)
+  const handleCategory = (newCat) => updateFilters(newCat === category ? '' : newCat, undefined)
 
   return (
     <div className="page-container py-8">
@@ -68,7 +75,9 @@ export default function ExplorePage() {
               ? `${CATEGORIES.find(c => c.id === category)?.icon || ''} ${CATEGORIES.find(c => c.id === category)?.label || ''} Providers`
               : 'Explore Providers'}
           </h1>
-          <p className="text-slate-400">{providers.length} providers found</p>
+          <p className="text-slate-400">
+            {!query?.trim() && !category ? 'Find the perfect expert for your needs.' : `${providers.length} providers found`}
+          </p>
         </div>
 
         {/* Search + Filter bar */}
@@ -108,7 +117,7 @@ export default function ExplorePage() {
                   >All</button>
                   {CATEGORIES.map(c => (
                     <button key={c.id}
-                      onClick={() => setCategory(c.id === category ? '' : c.id)}
+                      onClick={() => handleCategory(c.id)}
                       className={`badge text-xs cursor-pointer transition-all ${category === c.id ? 'badge-brand' : 'bg-white/5 text-slate-400 border border-white/10'}`}
                     >
                       {c.icon} {c.label}
@@ -129,13 +138,13 @@ export default function ExplorePage() {
               <div>
                 <h4 className="text-sm font-semibold mb-3 text-slate-300">Availability</h4>
                 <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" className="rounded accent-brand-500" />
+                  <input type="checkbox" checked={available} onChange={(e) => setAvailable(e.target.checked)} className="rounded accent-brand-500" />
                   <span className="text-sm text-slate-400">Available Now</span>
                 </label>
               </div>
             </div>
             <div className="flex justify-end mt-4">
-              <button onClick={() => { setCategory(''); setPriceRange([0, 500]); setShowFilters(false) }}
+              <button onClick={() => { updateFilters('', ''); setPriceRange([0, 500]); setAvailable(false); setShowFilters(false) }}
                 className="btn-ghost text-sm text-rose-400 hover:text-rose-300">
                 <X size={14} /> Clear Filters
               </button>
@@ -145,12 +154,12 @@ export default function ExplorePage() {
 
         {/* Category pills */}
         <div className="flex gap-2 overflow-x-auto pb-2 mb-6 scrollbar-hide">
-          <button onClick={() => setCategory('')}
+          <button onClick={() => handleCategory('')}
             className={`badge flex-shrink-0 px-4 py-1.5 text-sm cursor-pointer transition-all ${!category ? 'badge-brand' : 'bg-white/5 text-slate-400 border border-white/10 hover:border-white/20'}`}
           >All</button>
           {CATEGORIES.map(c => (
             <button key={c.id}
-              onClick={() => setCategory(c.id === category ? '' : c.id)}
+              onClick={() => handleCategory(c.id)}
               className={`badge flex-shrink-0 px-4 py-1.5 text-sm cursor-pointer transition-all ${category === c.id ? 'badge-brand' : 'bg-white/5 text-slate-400 border border-white/10 hover:border-white/20'}`}
             >
               {c.icon} {c.label}
@@ -159,7 +168,17 @@ export default function ExplorePage() {
         </div>
 
         {/* Results */}
-        {isLoading ? (
+        {!query?.trim() && !category ? (
+          <div className="text-center py-20 glass-card rounded-2xl mx-auto flex flex-col items-center max-w-2xl border-brand-500/20">
+            <div className="w-20 h-20 bg-brand-500/10 text-brand-400 rounded-full flex items-center justify-center text-4xl mb-6 shadow-neon">
+              🔎
+            </div>
+            <h3 className="text-2xl font-bold text-white mb-3">Ready to find a Provider?</h3>
+            <p className="text-slate-400 max-w-md">
+              Please enter a search term in the box above or select a category to begin discovering top-rated professionals.
+            </p>
+          </div>
+        ) : isLoading ? (
           <SkeletonList count={9} />
         ) : providers.length === 0 ? (
           <div className="text-center py-20">

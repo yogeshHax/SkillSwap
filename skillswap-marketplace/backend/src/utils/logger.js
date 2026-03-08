@@ -6,6 +6,11 @@ const path = require('path');
 const LOG_DIR = process.env.LOG_DIR || 'logs';
 const LOG_LEVEL = process.env.LOG_LEVEL || 'info';
 
+const fs = require('fs');
+if (!fs.existsSync(LOG_DIR)) {
+  fs.mkdirSync(LOG_DIR, { recursive: true });
+}
+
 const { combine, timestamp, printf, colorize, errors, json } = winston.format;
 
 const devFormat = combine(

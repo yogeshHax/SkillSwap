@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { Zap, Twitter, Github, Linkedin, Heart } from 'lucide-react'
+import toast from 'react-hot-toast'
 
 export default function Footer() {
   return (
@@ -23,9 +24,9 @@ export default function Footer() {
             </div>
           </div>
           {[
-            { title: 'Platform', links: [['Explore', '/explore'], ['How it Works', '#'], ['Pricing', '#'], ['Blog', '#']] },
-            { title: 'Providers', links: [['Join as Provider', '/signup'], ['Provider Dashboard', '/provider-dashboard'], ['Resources', '#'], ['Community', '#']] },
-            { title: 'Company', links: [['About Us', '#'], ['Careers', '#'], ['Privacy Policy', '#'], ['Terms of Service', '#']] },
+            { title: 'Platform', links: [['Explore', '/explore'], ['How it Works', '/explore'], ['Pricing', '/explore'], ['Blog', '/explore']] },
+            { title: 'Providers', links: [['Join as Provider', '/signup?role=provider'], ['Provider Dashboard', '/provider-dashboard'], ['Resources', '/explore'], ['Community', '/explore']] },
+            { title: 'Company', links: [['About Us', '/explore'], ['Careers', '/explore'], ['Privacy Policy', '/'], ['Terms of Service', '/']] },
           ].map((col) => (
             <div key={col.title}>
               <h4 className="text-sm font-semibold text-slate-300 mb-3">{col.title}</h4>

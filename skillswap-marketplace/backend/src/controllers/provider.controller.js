@@ -9,8 +9,8 @@ const listProviders = asyncHandler(async (req, res) => {
 });
 
 const getProvider = asyncHandler(async (req, res) => {
-  const provider = await providerService.getProvider(req.params.id);
-  sendResponse(res, 200, 'Provider fetched', { provider });
+  const result = await providerService.getProvider(req.params.id);
+  sendResponse(res, 200, 'Provider fetched', result);
 });
 
 const searchNearby = asyncHandler(async (req, res) => {

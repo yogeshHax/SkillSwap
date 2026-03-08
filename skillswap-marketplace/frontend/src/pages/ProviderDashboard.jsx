@@ -6,15 +6,17 @@ import { useProviderBookings, useUpdateBookingStatus, useProviderReviews } from 
 import { useAuth } from '../context/AuthContext'
 import Avatar from '../components/common/Avatar'
 import { RatingDisplay } from '../components/common/StarRating'
-import { formatDate, formatCurrency, MOCK_REVIEWS } from '../utils/helpers'
+import { formatDate, formatCurrency } from '../utils/helpers'
 import toast from 'react-hot-toast'
+import { db } from '../config/firebase'
+import { collection, doc, setDoc, serverTimestamp } from 'firebase/firestore'
 
 export default function ProviderDashboard() {
   const { user } = useAuth()
   const [activeTab, setActiveTab] = useState('overview')
 
   const { data: bookingsData, refetch } = useProviderBookings()
-  const { mutateAsync: updateStatus }   = useUpdateBookingStatus()
+  const { mutateAsync: updateStatus } = useUpdateBookingStatus()
 
   const allBookings = Array.isArray(bookingsData) && bookingsData.length ? bookingsData : []
 
@@ -22,45 +24,57 @@ export default function ProviderDashboard() {
   const normalise = (b) => ({
     ...b,
     customerName: b.customerName || b.customerId?.name || 'Customer',
-    service:      b.service      || b.serviceId?.title || 'Session',
-    date:         b.date         || b.timeSlot?.date,
-    time:         b.time         || b.timeSlot?.startTime,
-    amount:       b.amount       || b.serviceId?.pricing?.amount || 0,
+    service: b.service || b.serviceId?.title || 'Session',
+    date: b.date || b.timeSlot?.date,
+    time: b.time || b.timeSlot?.startTime,
+    amount: b.amount || b.serviceId?.pricing?.amount || 0,
   })
 
-  const bookings  = allBookings.map(normalise)
-  const pending   = bookings.filter(b => b.status === 'pending')
+  const bookings = allBookings.map(normalise)
+  const pending = bookings.filter(b => b.status === 'pending')
   const confirmed = bookings.filter(b => b.status === 'confirmed')
   const completed = bookings.filter(b => b.status === 'completed')
   const totalEarned = completed.reduce((s, b) => s + (b.amount || 0), 0)
 
   const providerId = user?._id || user?.id
   const { data: reviewsData } = useProviderReviews(providerId)
-  const reviews = Array.isArray(reviewsData) ? reviewsData : (reviewsData?.reviews ?? MOCK_REVIEWS)
+  const reviews = Array.isArray(reviewsData) ? reviewsData : (reviewsData?.reviews ?? [])
 
   const avgRating = reviews.length
     ? (reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(1)
     : '0.0'
 
-  const handleAccept = async (id) => {
+  const handleAccept = async (b) => {
     try {
-      await updateStatus({ id, status: 'confirmed' })
+      await updateStatus({ id: b._id, status: 'confirmed' })
       toast.success('Booking accepted!')
+      await setDoc(doc(collection(db, 'bookingUpdates'), b._id), {
+        status: 'confirmed',
+        customerId: String(b.customerId?._id || b.customerId),
+        timestamp: serverTimestamp()
+      })
+      refetch()
     } catch { toast.error('Failed to accept booking') }
   }
 
-  const handleDecline = async (id) => {
+  const handleDecline = async (b) => {
     try {
-      await updateStatus({ id, status: 'cancelled' })
+      await updateStatus({ id: b._id, status: 'cancelled' })
       toast.error('Booking declined')
+      await setDoc(doc(collection(db, 'bookingUpdates'), b._id), {
+        status: 'cancelled',
+        customerId: String(b.customerId?._id || b.customerId),
+        timestamp: serverTimestamp()
+      })
+      refetch()
     } catch { toast.error('Failed to decline booking') }
   }
 
   const TABS = [
-    { id: 'overview',  label: 'Overview',  icon: LayoutDashboard },
-    { id: 'bookings',  label: 'Bookings',  count: pending.length, icon: Calendar },
-    { id: 'reviews',   label: 'Reviews',   icon: Star },
-    { id: 'earnings',  label: 'Earnings',  icon: DollarSign },
+    { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+    { id: 'bookings', label: 'Bookings', count: pending.length, icon: Calendar },
+    { id: 'reviews', label: 'Reviews', icon: Star },
+    { id: 'earnings', label: 'Earnings', icon: DollarSign },
   ]
 
   return (
@@ -79,10 +93,10 @@ export default function ProviderDashboard() {
         {/* Stats */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           {[
-            { label: 'Pending Requests', value: pending.length,   icon: Clock,        color: 'text-amber-400',   bg: 'bg-amber-500/10' },
-            { label: 'Active Bookings',  value: confirmed.length, icon: Calendar,     color: 'text-brand-400',   bg: 'bg-brand-500/10' },
-            { label: 'Sessions Done',    value: completed.length, icon: CheckCircle2, color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
-            { label: 'Total Earned',     value: formatCurrency(totalEarned), icon: DollarSign, color: 'text-neon', bg: 'bg-teal-500/10' },
+            { label: 'Pending Requests', value: pending.length, icon: Clock, color: 'text-amber-400', bg: 'bg-amber-500/10' },
+            { label: 'Active Bookings', value: confirmed.length, icon: Calendar, color: 'text-brand-400', bg: 'bg-brand-500/10' },
+            { label: 'Sessions Done', value: completed.length, icon: CheckCircle2, color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
+            { label: 'Total Earned', value: formatCurrency(totalEarned), icon: DollarSign, color: 'text-neon', bg: 'bg-teal-500/10' },
           ].map((s) => (
             <motion.div key={s.label} initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-4">
               <div className={`w-9 h-9 rounded-xl ${s.bg} flex items-center justify-center mb-3`}>
@@ -98,9 +112,8 @@ export default function ProviderDashboard() {
         <div className="flex gap-1 glass-card p-1 mb-6 overflow-x-auto">
           {TABS.map((tab) => (
             <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all flex-shrink-0 ${
-                activeTab === tab.id ? 'bg-brand-500/20 text-brand-400 border border-brand-500/30' : 'text-slate-400 hover:text-white'
-              }`}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all flex-shrink-0 ${activeTab === tab.id ? 'bg-brand-500/20 text-brand-400 border border-brand-500/30' : 'text-slate-400 hover:text-white'
+                }`}
             >
               <tab.icon size={15} />
               {tab.label}
@@ -136,10 +149,10 @@ export default function ProviderDashboard() {
                     </span>
                     {b.status === 'pending' && (
                       <div className="flex gap-1">
-                        <button onClick={() => handleAccept(b._id)} className="p-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 rounded-lg transition-all">
+                        <button onClick={() => handleAccept(b)} className="p-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 rounded-lg transition-all">
                           <CheckCircle2 size={14} />
                         </button>
-                        <button onClick={() => handleDecline(b._id)} className="p-1.5 bg-rose-500/20 hover:bg-rose-500/30 text-rose-400 rounded-lg transition-all">
+                        <button onClick={() => handleDecline(b)} className="p-1.5 bg-rose-500/20 hover:bg-rose-500/30 text-rose-400 rounded-lg transition-all">
                           <XCircle size={14} />
                         </button>
                       </div>
@@ -189,10 +202,10 @@ export default function ProviderDashboard() {
                         </div>
                       </div>
                       <div className="flex gap-2 ml-auto sm:ml-0">
-                        <button onClick={() => handleDecline(b._id)} className="btn-ghost text-sm text-rose-400 py-2 px-4 border border-rose-500/20">
+                        <button onClick={() => handleDecline(b)} className="btn-ghost text-sm text-rose-400 py-2 px-4 border border-rose-500/20">
                           Decline
                         </button>
-                        <button onClick={() => handleAccept(b._id)} className="btn-primary text-sm py-2 px-4">
+                        <button onClick={() => handleAccept(b)} className="btn-primary text-sm py-2 px-4">
                           Accept
                         </button>
                       </div>
@@ -239,7 +252,7 @@ export default function ProviderDashboard() {
               <div className="flex-1 space-y-2">
                 {[5, 4, 3, 2, 1].map((n) => {
                   const count = reviews.filter(r => Math.round(r.rating) === n).length
-                  const pct   = reviews.length ? Math.round((count / reviews.length) * 100) : 0
+                  const pct = reviews.length ? Math.round((count / reviews.length) * 100) : 0
                   return (
                     <div key={n} className="flex items-center gap-2">
                       <span className="text-xs text-slate-400 w-3">{n}</span>
@@ -280,9 +293,9 @@ export default function ProviderDashboard() {
               <h3 className="font-semibold mb-4 flex items-center gap-2"><DollarSign size={16} className="text-neon" />Earnings Overview</h3>
               <div className="space-y-3">
                 {[
-                  { period: 'This Month',  amount: totalEarned },
-                  { period: 'Last Month',  amount: totalEarned * 0.9 },
-                  { period: 'This Year',   amount: totalEarned * 8 },
+                  { period: 'This Month', amount: totalEarned },
+                  { period: 'Last Month', amount: totalEarned * 0.9 },
+                  { period: 'This Year', amount: totalEarned * 8 },
                 ].map((e) => (
                   <div key={e.period} className="flex items-center justify-between p-3 glass rounded-xl">
                     <span className="text-slate-400 text-sm">{e.period}</span>

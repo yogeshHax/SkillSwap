@@ -4,7 +4,8 @@ import { motion, useInView } from 'framer-motion'
 import { ArrowRight, Star, Shield, Zap, Users, TrendingUp, CheckCircle2, Play } from 'lucide-react'
 import SearchBar from '../components/common/SearchBar'
 import ProviderCard from '../components/common/ProviderCard'
-import { CATEGORIES, MOCK_PROVIDERS } from '../utils/helpers'
+import { CATEGORIES } from '../utils/helpers'
+import { useProviders } from '../hooks/useApi'
 
 const fadeUp = { hidden: { opacity: 0, y: 30 }, visible: (i = 0) => ({ opacity: 1, y: 0, transition: { delay: i * 0.08, duration: 0.5, ease: [0.22, 1, 0.36, 1] } }) }
 
@@ -35,6 +36,9 @@ const FEATURES = [
 ]
 
 export default function LandingPage() {
+  const { data } = useProviders({ sort: 'rating' })
+  const topProviders = data?.providers?.slice(0, 3) || []
+
   return (
     <div className="overflow-hidden">
       {/* HERO */}
@@ -107,7 +111,7 @@ export default function LandingPage() {
             transition={{ delay: 0.6, duration: 0.7 }}
             className="hidden lg:flex justify-center mt-16 gap-4 relative"
           >
-            {MOCK_PROVIDERS.slice(0, 3).map((p, i) => (
+            {topProviders.map((p, i) => (
               <motion.div
                 key={p._id}
                 animate={{ y: [0, -8, 0] }}
@@ -191,7 +195,7 @@ export default function LandingPage() {
             </Link>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {MOCK_PROVIDERS.map((p, i) => <ProviderCard key={p._id} provider={p} index={i} />)}
+            {topProviders.map((p, i) => <ProviderCard key={p._id} provider={p} index={i} />)}
           </div>
           <div className="mt-8 text-center sm:hidden">
             <Link to="/explore" className="btn-secondary">View All Providers <ArrowRight size={15} /></Link>

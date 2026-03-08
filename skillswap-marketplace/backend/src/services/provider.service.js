@@ -1,7 +1,7 @@
 // src/services/provider.service.js
-const userRepo    = require('../repositories/user.repository');
+const userRepo = require('../repositories/user.repository');
 const serviceRepo = require('../repositories/service.repository');
-const reviewRepo  = require('../repositories/review.repository');
+const reviewRepo = require('../repositories/review.repository');
 const { withCache, cacheDel } = require('../utils/cache.utils');
 const { ApiError, buildPaginationMeta } = require('../utils/response.utils');
 
@@ -21,8 +21,8 @@ function normaliseProvider(user, services = []) {
     // Frontend uses `hourlyRate` — DB stores it per-service
     hourlyRate: primaryService?.pricing?.amount || 0,
     // Flatten rating for simple usage
-    rating:      obj.rating?.average ?? 0,
-    reviewCount: obj.rating?.count   ?? 0,
+    rating: obj.rating?.average ?? 0,
+    reviewCount: obj.rating?.count ?? 0,
     // Flatten location to string for card display
     locationStr: [obj.location?.city, obj.location?.state, obj.location?.country]
       .filter(Boolean).join(', '),
@@ -31,24 +31,30 @@ function normaliseProvider(user, services = []) {
 }
 
 class ProviderService {
-  async listProviders({ page = 1, limit = 20, skill, city, sort = 'rating', q } = {}) {
+  async listProviders({ page = 1, limit = 20, skill, city, sort = 'rating', q, category } = {}) {
     const filters = {};
     if (skill || q) {
       const term = skill || q;
+      const regexTerm = term.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
       filters.$or = [
-        { skillsOffered: { $in: [new RegExp(term, 'i')] } },
-        { name:          { $regex: term, $options: 'i' } },
+        { skillsOffered: { $regex: regexTerm, $options: 'i' } },
+        { name: { $regex: regexTerm, $options: 'i' } },
+        { location: { $regex: regexTerm, $options: 'i' } },
       ];
+    }
+
+    if (category) {
+      filters.category = category; // Match the schema if category exists on provider
     }
     if (city) filters['location.city'] = { $regex: city, $options: 'i' };
 
     const sortMap = {
-      rating:     { 'rating.average': -1 },
-      newest:     { createdAt: -1 },
-      name:       { name: 1 },
-      price_asc:  { 'rating.average': 1 }, // fallback; real price sort needs join
+      rating: { 'rating.average': -1 },
+      newest: { createdAt: -1 },
+      name: { name: 1 },
+      price_asc: { 'rating.average': 1 }, // fallback; real price sort needs join
       price_desc: { 'rating.average': -1 },
-      reviews:    { 'rating.count': -1 },
+      reviews: { 'rating.count': -1 },
     };
 
     const cacheKey = `providers:list:${page}:${limit}:${skill}:${city}:${sort}:${q}`;
@@ -56,14 +62,14 @@ class ProviderService {
     return withCache(cacheKey, TTL, async () => {
       const { data, total } = await userRepo.findProviders({
         filters,
-        page:  Number(page),
+        page: Number(page),
         limit: Number(limit),
-        sort:  sortMap[sort] || sortMap.rating,
+        sort: sortMap[sort] || sortMap.rating,
       });
 
       // Batch-load primary services for each provider
-      const ids       = data.map(u => u._id);
-      const allSvcs   = await serviceRepo.findByProviderIds(ids);
+      const ids = data.map(u => u._id);
+      const allSvcs = await serviceRepo.findByProviderIds(ids);
 
       const providers = data.map(user => {
         const svcs = allSvcs.filter(s => s.providerId?.toString() === user._id.toString());

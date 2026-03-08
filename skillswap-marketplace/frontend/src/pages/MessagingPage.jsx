@@ -6,7 +6,9 @@ import { useMessages, useSendMessage, useUserChats, buildChatId, useProviders } 
 import { useSocket } from '../context/SocketContext'
 import { useAuth } from '../context/AuthContext'
 import Avatar from '../components/common/Avatar'
-import { formatRelativeTime, MOCK_PROVIDERS } from '../utils/helpers'
+import { formatRelativeTime } from '../utils/helpers'
+import { db } from '../config/firebase'
+import { collection, addDoc, onSnapshot, query, where, orderBy, serverTimestamp, doc, setDoc } from 'firebase/firestore'
 
 export default function MessagingPage() {
   const { chatId: chatIdParam } = useParams()
@@ -20,16 +22,16 @@ export default function MessagingPage() {
     connected, onlineUsers,
   } = useSocket() || {}
 
-  const [selectedChatId, setSelectedChatId]     = useState(null)
+  const [selectedChatId, setSelectedChatId] = useState(null)
   const [selectedProvider, setSelectedProvider] = useState(null)
-  const [localMessages, setLocalMessages]       = useState([])
-  const [newMessage, setNewMessage]             = useState('')
-  const [isTyping, setIsTyping]                 = useState(false)
-  const [typingTimeout, setTypingTimeout]       = useState(null)
-  const [showNewChat, setShowNewChat]           = useState(false)
-  const [providerSearch, setProviderSearch]     = useState('')
+  const [localMessages, setLocalMessages] = useState([])
+  const [newMessage, setNewMessage] = useState('')
+  const [isTyping, setIsTyping] = useState(false)
+  const [typingTimeout, setTypingTimeout] = useState(null)
+  const [showNewChat, setShowNewChat] = useState(false)
+  const [providerSearch, setProviderSearch] = useState('')
   const messagesEndRef = useRef(null)
-  const inputRef       = useRef(null)
+  const inputRef = useRef(null)
 
   // ── Resolve initial chatId from URL ──────────────────
   useEffect(() => {
@@ -42,22 +44,49 @@ export default function MessagingPage() {
   }, [chatIdParam, withParam, myId])
 
   // ── Fetch data ────────────────────────────────────────
-  const { data: chatList = [] }       = useUserChats()
+  const { data: chatList = [] } = useUserChats()
   const { data: fetchedMessages = [] } = useMessages(selectedChatId)
-  const { data: providersData }        = useProviders()
+  const { data: providersData } = useProviders()
 
   const allProviders = providersData?.providers?.length
     ? providersData.providers
-    : MOCK_PROVIDERS
+    : []
 
   const filteredProviders = allProviders.filter(p =>
     p.name?.toLowerCase().includes(providerSearch.toLowerCase())
   )
 
-  // ── Sync fetched messages into local state ────────────
+  // ── Sync fetched messages into local state & Firebase Subscribe ────────────
   useEffect(() => {
+    if (!selectedChatId) {
+      setLocalMessages([])
+      return
+    }
+
+    const q = query(
+      collection(db, "messages"),
+      where("chatId", "==", selectedChatId),
+      orderBy("createdAt", "asc")
+    )
+
+    // Fallback merge
     if (fetchedMessages?.length) setLocalMessages(fetchedMessages)
-    else if (!selectedChatId) setLocalMessages([])
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const fbMessages = snapshot.docs.map(doc => {
+        const data = doc.data()
+        // Convert timestamp to string if available
+        const dateStr = data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : new Date().toISOString()
+        return { ...data, _id: doc.id, createdAt: dateStr }
+      })
+
+      // We only merge fbMessages right now for simplicity, overriding local
+      if (fbMessages.length > 0) {
+        setLocalMessages(fbMessages)
+      }
+    })
+
+    return () => unsubscribe()
   }, [fetchedMessages, selectedChatId])
 
   useEffect(() => {
@@ -71,34 +100,40 @@ export default function MessagingPage() {
     return () => leaveChat?.(selectedChatId)
   }, [selectedChatId, joinChat, leaveChat])
 
-  // ── Socket: receive messages ──────────────────────────
+  // ── Socket: receive messages (disabled in favor of Firebase) ─────────
   useEffect(() => {
-    if (!onMessage) return
-    return onMessage(({ message }) => {
-      setLocalMessages(prev =>
-        prev.some(m => m._id === message._id) ? prev : [...prev, message]
-      )
-    })
-  }, [onMessage])
-
-  // ── Socket: typing indicator ──────────────────────────
-  useEffect(() => {
-    if (!onTyping) return
-    return onTyping(({ chatId: cId }) => {
-      if (cId === selectedChatId) {
-        setIsTyping(true)
-        setTimeout(() => setIsTyping(false), 2000)
-      }
-    })
-  }, [onTyping, selectedChatId])
-
-  const { mutateAsync: sendMsgApi } = useSendMessage()
+    // We are now listening via Firebase onSnapshot above!
+  }, [])
 
   // ── Derive receiver from chatId ───────────────────────
   const getReceiverId = useCallback((chatId) => {
     if (!chatId || !myId) return null
     return chatId.split('_').find(id => id !== String(myId)) || null
   }, [myId])
+
+  // ── Firebase: typing indicator ──────────────────────────
+  useEffect(() => {
+    if (!selectedChatId || !myId) return
+    const receiverId = getReceiverId(selectedChatId)
+    if (!receiverId) return
+
+    // Listen to typing status where document ID is the chat pair
+    const typingDocRef = doc(db, "typing", selectedChatId)
+    const unsubscribe = onSnapshot(typingDocRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data()
+        if (data[receiverId] === true) {
+          setIsTyping(true)
+        } else {
+          setIsTyping(false)
+        }
+      }
+    })
+    return () => unsubscribe()
+  }, [selectedChatId, myId, getReceiverId])
+
+  const { mutateAsync: sendMsgApi } = useSendMessage()
+
 
   // ── Send ──────────────────────────────────────────────
   const handleSend = useCallback(async (e) => {
@@ -109,41 +144,45 @@ export default function MessagingPage() {
     const receiverId = getReceiverId(selectedChatId)
     if (!receiverId) return
 
-    const optimistic = {
-      _id: `opt_${Date.now()}`,
-      content: text,
-      senderId: myId,
-      createdAt: new Date().toISOString(),
-      optimistic: true,
-    }
-    setLocalMessages(prev => [...prev, optimistic])
-
     try {
+      // 1. Send via Firebase
+      await addDoc(collection(db, "messages"), {
+        chatId: selectedChatId,
+        content: text,
+        senderId: myId,
+        receiverId: receiverId,
+        createdAt: serverTimestamp(),
+      })
+      // 2. Also send via API for backup/socket fallback
       await sendMsgApi({ receiverId, content: text, _localSenderId: myId })
-    } catch {
-      setLocalMessages(prev => prev.filter(m => m._id !== optimistic._id))
+    } catch (err) {
+      console.error('Message failed to send', err)
     }
   }, [newMessage, selectedChatId, myId, getReceiverId, sendMsgApi])
 
-  // ── Typing emit ───────────────────────────────────────
-  const handleTyping = (e) => {
+  // ── Typing emit (Firebase) ───────────────────────────────────────
+  const handleTyping = async (e) => {
     setNewMessage(e.target.value)
-    if (!selectedChatId) return
+    if (!selectedChatId || !myId) return
     const receiverId = getReceiverId(selectedChatId)
     if (!receiverId) return
     if (typingTimeout) clearTimeout(typingTimeout)
-    emitTyping?.(selectedChatId, receiverId, true)
-    setTypingTimeout(setTimeout(() => emitTyping?.(selectedChatId, receiverId, false), 1500))
+
+    // Emit true
+    setDoc(doc(db, "typing", selectedChatId), { [myId]: true }, { merge: true }).catch(() => { })
+
+    setTypingTimeout(setTimeout(() => {
+      setDoc(doc(db, "typing", selectedChatId), { [myId]: false }, { merge: true }).catch(() => { })
+    }, 1500))
   }
 
   // ── Start a new chat ──────────────────────────────────
   const startChat = (provider) => {
     if (!myId) return
     const theirId = provider._id || provider.id
-    const chatId  = buildChatId(myId, theirId)
+    const chatId = buildChatId(myId, theirId)
     setSelectedChatId(chatId)
     setSelectedProvider(provider)
-    setLocalMessages([])
     setShowNewChat(false)
     setProviderSearch('')
   }
@@ -195,9 +234,9 @@ export default function MessagingPage() {
             )}
             {chatList.map((chat) => {
               const partner = chat.lastMessage?.senderId
-              const name    = partner?.name || 'User'
+              const name = partner?.name || 'User'
               const preview = chat.lastMessage?.content || ''
-              const online  = onlineUsers?.includes(partner?._id)
+              const online = onlineUsers?.includes(partner?._id)
               return (
                 <button key={chat._id}
                   onClick={() => setSelectedChatId(chat._id)}

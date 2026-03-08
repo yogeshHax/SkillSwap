@@ -6,7 +6,7 @@ import { useProvider, useProviderReviews } from '../hooks/useApi'
 import Avatar from '../components/common/Avatar'
 import { RatingDisplay } from '../components/common/StarRating'
 import ReviewForm from '../components/review/ReviewForm'
-import { MOCK_PROVIDERS, MOCK_REVIEWS, formatCurrency, formatDate } from '../utils/helpers'
+import { formatCurrency, formatDate } from '../utils/helpers'
 import { useAuth } from '../context/AuthContext'
 
 export default function ProviderProfilePage() {
@@ -19,12 +19,10 @@ export default function ProviderProfilePage() {
   const { data: reviewsData } = useProviderReviews(id)
 
   const provider = providerData
-    || MOCK_PROVIDERS.find(p => p._id === id)
-    || MOCK_PROVIDERS[0]
 
   const reviews = Array.isArray(reviewsData)
     ? reviewsData
-    : (reviewsData?.reviews ?? MOCK_REVIEWS)
+    : (reviewsData?.reviews ?? [])
 
   if (isLoading) return (
     <div className="page-container max-w-5xl mx-auto px-4 py-8">
@@ -69,7 +67,7 @@ export default function ProviderProfilePage() {
                     <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 badge badge-neon text-xs whitespace-nowrap">Available Now</span>
                   )}
                 </div>
-                <h1 className="text-xl font-bold text-white mb-1">{provider.name}</h1>
+                <h1 className="text-xl font-bold text-white mb-1">{provider.name || 'Unknown Provider'}</h1>
                 {locationText && (
                   <div className="flex items-center justify-center gap-1 text-slate-500 text-sm">
                     <MapPin size={13} /><span>{locationText}</span>
@@ -135,9 +133,8 @@ export default function ProviderProfilePage() {
             <div className="flex gap-1 glass-card p-1">
               {TABS.map((tab) => (
                 <button key={tab} onClick={() => setActiveTab(tab)}
-                  className={`flex-1 py-2 text-sm font-medium rounded-xl capitalize transition-all ${
-                    activeTab === tab ? 'bg-brand-500/20 text-brand-400 border border-brand-500/30' : 'text-slate-400 hover:text-white'
-                  }`}
+                  className={`flex-1 py-2 text-sm font-medium rounded-xl capitalize transition-all ${activeTab === tab ? 'bg-brand-500/20 text-brand-400 border border-brand-500/30' : 'text-slate-400 hover:text-white'
+                    }`}
                 >
                   {tab} {tab === 'reviews' && `(${reviews.length})`}
                 </button>
@@ -218,8 +215,13 @@ export default function ProviderProfilePage() {
                     <p className="text-slate-500">No reviews yet. Be the first!</p>
                   </div>
                 )}
-                {isAuthenticated && (
-                  <ReviewForm providerId={id} onSuccess={() => {}} />
+                {isAuthenticated ? (
+                  <ReviewForm providerId={id} onSuccess={() => { }} />
+                ) : (
+                  <div className="glass p-5 rounded-2xl text-center border border-white/5 mt-6">
+                    <p className="text-slate-400 text-sm mb-3">You must be logged in to leave a review.</p>
+                    <Link to="/login" className="btn-secondary py-2 px-6">Sign In</Link>
+                  </div>
                 )}
               </div>
             )}

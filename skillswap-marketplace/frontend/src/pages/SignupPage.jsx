@@ -9,8 +9,8 @@ export default function SignupPage() {
   const { signup } = useAuth()
   const navigate = useNavigate()
   const [params] = useSearchParams()
-  const [role, setRole]       = useState(params.get('role') || 'customer')
-  const [form, setForm]       = useState({ name: '', email: '', password: '' })
+  const [role, setRole] = useState(params.get('role') || 'customer')
+  const [form, setForm] = useState({ name: '', email: '', password: '' })
   const [showPass, setShowPass] = useState(false)
   const [loading, setLoading] = useState(false)
 
@@ -18,10 +18,12 @@ export default function SignupPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    if (!form.name || !form.email || !form.password) {
-      toast.error('All fields are required'); return
+    if (!form.name || form.name.trim().length < 2) {
+      toast.error('Full name must be at least 2 characters'); return
     }
-    // Backend requires 8+ chars
+    if (!form.email) {
+      toast.error('Valid email is required'); return
+    }
     if (form.password.length < 8) {
       toast.error('Password must be at least 8 characters'); return
     }
@@ -47,9 +49,8 @@ export default function SignupPage() {
       <div className="flex gap-1 glass p-1 rounded-xl mb-6">
         {['customer', 'provider'].map((r) => (
           <button key={r} onClick={() => setRole(r)}
-            className={`flex-1 py-2 rounded-lg text-sm font-medium capitalize transition-all ${
-              role === r ? 'bg-brand-500 text-white shadow-brand' : 'text-slate-400 hover:text-white'
-            }`}
+            className={`flex-1 py-2 rounded-lg text-sm font-medium capitalize transition-all ${role === r ? 'bg-brand-500 text-white shadow-brand' : 'text-slate-400 hover:text-white'
+              }`}
           >
             {r === 'customer' ? '👤 Customer' : '⚡ Provider'}
           </button>
@@ -62,7 +63,7 @@ export default function SignupPage() {
           <div className="relative">
             <User size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
             <input value={form.name} onChange={update('name')} placeholder="Your full name"
-              className="input-field pl-9" required />
+              className="input-field pl-9" required minLength={2} />
           </div>
         </div>
         <div>
@@ -86,8 +87,8 @@ export default function SignupPage() {
             </button>
           </div>
         </div>
-        <button type="submit" disabled={loading}
-          className="btn-primary w-full justify-center py-3 disabled:opacity-50">
+        <button type="submit" disabled={loading || form.name.length < 2 || !form.email || form.password.length < 8}
+          className="btn-primary w-full justify-center py-3 disabled:opacity-50 disabled:cursor-not-allowed">
           {loading ? (
             <span className="flex items-center gap-2">
               <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}

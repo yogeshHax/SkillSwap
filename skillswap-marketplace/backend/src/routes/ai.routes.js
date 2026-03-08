@@ -14,6 +14,6 @@ const recommendRules = [
 ];
 
 // POST /api/ai/recommend
-router.post('/recommend', authenticate, aiRateLimiter, recommendRules, validate, ctrl.recommend);
+router.post('/recommend', aiRateLimiter, recommendRules, validate, ctrl.recommend);
 
 module.exports = router;

@@ -8,8 +8,8 @@ import toast from 'react-hot-toast'
 export default function LoginPage() {
   const { login } = useAuth()
   const navigate = useNavigate()
-  const [role, setRole]       = useState('customer')
-  const [email, setEmail]     = useState('')
+  const [role, setRole] = useState('customer')
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPass, setShowPass] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -42,9 +42,8 @@ export default function LoginPage() {
       <div className="flex gap-1 glass p-1 rounded-xl mb-6">
         {['customer', 'provider'].map((r) => (
           <button key={r} onClick={() => setRole(r)}
-            className={`flex-1 py-2 rounded-lg text-sm font-medium capitalize transition-all ${
-              role === r ? 'bg-brand-500 text-white shadow-brand' : 'text-slate-400 hover:text-white'
-            }`}
+            className={`flex-1 py-2 rounded-lg text-sm font-medium capitalize transition-all ${role === r ? 'bg-brand-500 text-white shadow-brand' : 'text-slate-400 hover:text-white'
+              }`}
           >
             {r === 'customer' ? '👤 Customer' : '⚡ Provider'}
           </button>
@@ -73,9 +72,9 @@ export default function LoginPage() {
           </div>
         </div>
         <div className="flex justify-end">
-          <Link to="#" className="text-xs text-brand-400 hover:text-brand-300">Forgot password?</Link>
+          <button type="button" onClick={() => toast('Password recovery coming soon!', { icon: '🚧' })} className="text-xs text-brand-400 hover:text-brand-300">Forgot password?</button>
         </div>
-        <button type="submit" disabled={loading}
+        <button type="submit" disabled={loading || !email || !password}
           className="btn-primary w-full justify-center py-3 disabled:opacity-50 disabled:cursor-not-allowed">
           {loading ? (
             <span className="flex items-center gap-2">

@@ -9,6 +9,14 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 })
 
+let isRefreshing = false
+let refreshSubscribers = []
+
+const onRefreshed = (token) => {
+  refreshSubscribers.forEach((cb) => cb(token))
+  refreshSubscribers = []
+}
+
 // ── Request: attach JWT ───────────────────────────────
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('skillswap_token')
@@ -27,17 +35,52 @@ api.interceptors.response.use(
     }
     return res
   },
-  (error) => {
-    const message =
-      error.response?.data?.message || error.message || 'Something went wrong'
-    if (error.response?.status === 401) {
-      localStorage.removeItem('skillswap_token')
-      localStorage.removeItem('skillswap_user')
-      if (!window.location.pathname.startsWith('/login') &&
-          !window.location.pathname.startsWith('/signup')) {
-        window.location.href = '/login'
+  async (error) => {
+    const originalRequest = error.config
+    const message = error.response?.data?.message || error.message || 'Something went wrong'
+
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      if (isRefreshing) {
+        return new Promise((resolve) => {
+          refreshSubscribers.push((token) => {
+            originalRequest.headers.Authorization = `Bearer ${token}`
+            resolve(api(originalRequest))
+          })
+        })
       }
-    } else if (error.response?.status >= 500) {
+
+      originalRequest._retry = true
+      isRefreshing = true
+
+      try {
+        const rToken = localStorage.getItem('skillswap_rtoken')
+        if (!rToken) throw new Error('No refresh token')
+
+        const { data } = await axios.post(`${BASE_URL}/auth/refresh`, { refreshToken: rToken })
+        const newToken = data.data?.accessToken || data.accessToken
+
+        localStorage.setItem('skillswap_token', newToken)
+        api.defaults.headers.common['Authorization'] = `Bearer ${newToken}`
+        originalRequest.headers.Authorization = `Bearer ${newToken}`
+
+        onRefreshed(newToken)
+        isRefreshing = false
+        return api(originalRequest)
+      } catch (err) {
+        refreshSubscribers = []
+        isRefreshing = false
+        localStorage.removeItem('skillswap_token')
+        localStorage.removeItem('skillswap_rtoken')
+        localStorage.removeItem('skillswap_user')
+        if (!window.location.pathname.startsWith('/login') &&
+          !window.location.pathname.startsWith('/signup')) {
+          window.location.href = '/login'
+        }
+        return Promise.reject(err)
+      }
+    }
+
+    if (error.response?.status >= 500) {
       toast.error('Server error. Please try again.')
     }
     return Promise.reject({ message, status: error.response?.status })

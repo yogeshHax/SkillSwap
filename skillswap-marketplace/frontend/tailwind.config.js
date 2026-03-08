@@ -5,8 +5,8 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        display: ['Clash Display', 'Cal Sans', 'system-ui', 'sans-serif'],
-        body: ['Satoshi', 'DM Sans', 'system-ui', 'sans-serif'],
+        display: ['Caveat', 'system-ui', 'cursive'],
+        body: ['Inter', 'system-ui', 'sans-serif'],
         mono: ['JetBrains Mono', 'monospace'],
       },
       colors: {

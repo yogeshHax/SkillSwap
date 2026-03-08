@@ -6,21 +6,44 @@ import { useUserBookings, useUserChats } from '../hooks/useApi'
 import { useAuth } from '../context/AuthContext'
 import Avatar from '../components/common/Avatar'
 import AIAssistant from '../components/ai/AIAssistant'
-import { formatDate, formatCurrency, MOCK_BOOKINGS_CUSTOMER } from '../utils/helpers'
+import { formatDate, formatCurrency } from '../utils/helpers'
+import { db } from '../config/firebase'
+import { collection, onSnapshot, query, where, orderBy } from 'firebase/firestore'
+import toast from 'react-hot-toast'
+import { useEffect } from 'react'
 
 export default function CustomerDashboard() {
   const { user } = useAuth()
-  const navigate  = useNavigate()
+  const navigate = useNavigate()
   const myId = user?._id || user?.id
   const [activeTab, setActiveTab] = useState('upcoming')
 
-  const { data: bookingsData, isLoading: loadingBookings } = useUserBookings()
+  const { data: bookingsData, isLoading: loadingBookings, refetch } = useUserBookings()
   const { data: chatsData } = useUserChats()
 
-  // Real API data or mock fallback
+  useEffect(() => {
+    if (!myId) return
+    const q = query(collection(db, "bookingUpdates"), where("customerId", "==", String(myId)))
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === "added" || change.type === "modified") {
+          const raw = change.doc.data()
+          if (raw.status) {
+            toast.success(`A provider has updated your Booking Request to: ${raw.status.toUpperCase()}`, {
+              icon: raw.status === 'confirmed' ? '✅' : '❌'
+            })
+            refetch()
+          }
+        }
+      })
+    })
+    return () => unsubscribe()
+  }, [myId, refetch])
+
+  // Real API data
   const bookings = Array.isArray(bookingsData) && bookingsData.length
     ? bookingsData
-    : (MOCK_BOOKINGS_CUSTOMER || [])
+    : []
 
   const chats = Array.isArray(chatsData) ? chatsData : []
 
@@ -28,22 +51,22 @@ export default function CustomerDashboard() {
   const normalise = (b) => ({
     ...b,
     providerName: b.providerName || b.providerId?.name || b.serviceId?.providerId?.name || 'Provider',
-    service:      b.service      || b.serviceId?.title || 'Session',
-    date:         b.date         || b.timeSlot?.date,
-    time:         b.time         || b.timeSlot?.startTime,
-    amount:       b.amount       || b.serviceId?.pricing?.amount || 0,
-    providerId:   b.providerId?._id || b.providerId || '',
+    service: b.service || b.serviceId?.title || 'Session',
+    date: b.date || b.timeSlot?.date,
+    time: b.time || b.timeSlot?.startTime,
+    amount: b.amount || b.serviceId?.pricing?.amount || 0,
+    providerId: b.providerId?._id || b.providerId || '',
   })
 
   const normalised = bookings.map(normalise)
-  const upcoming   = normalised.filter(b => ['pending','confirmed','upcoming'].includes(b.status))
-  const past       = normalised.filter(b => ['completed'].includes(b.status))
+  const upcoming = normalised.filter(b => ['pending', 'confirmed', 'upcoming'].includes(b.status))
+  const past = normalised.filter(b => ['completed'].includes(b.status))
 
   const TABS = [
     { id: 'upcoming', label: 'Upcoming', count: upcoming.length, icon: Calendar },
-    { id: 'past',     label: 'Past',     count: past.length,     icon: CheckCircle2 },
-    { id: 'messages', label: 'Messages', count: chats.length,    icon: MessageSquare },
-    { id: 'ai',       label: 'AI Assistant', count: null,        icon: Bot },
+    { id: 'past', label: 'Past', count: past.length, icon: CheckCircle2 },
+    { id: 'messages', label: 'Messages', count: chats.length, icon: MessageSquare },
+    { id: 'ai', label: 'AI Assistant', count: null, icon: Bot },
   ]
 
   const openChat = (providerId) => {
@@ -72,10 +95,10 @@ export default function CustomerDashboard() {
         {/* Stats */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           {[
-            { label: 'Upcoming Sessions', value: upcoming.length, icon: Calendar,      color: 'text-brand-400',   bg: 'bg-brand-500/10' },
-            { label: 'Completed',         value: past.length,     icon: CheckCircle2,  color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
-            { label: 'Total Spent',       value: formatCurrency(past.reduce((s, b) => s + (b.amount || 0), 0)), icon: Star, color: 'text-amber-400', bg: 'bg-amber-500/10' },
-            { label: 'Conversations',     value: chats.length,    icon: MessageSquare, color: 'text-accent-400',  bg: 'bg-accent-500/10' },
+            { label: 'Upcoming Sessions', value: upcoming.length, icon: Calendar, color: 'text-brand-400', bg: 'bg-brand-500/10' },
+            { label: 'Completed', value: past.length, icon: CheckCircle2, color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
+            { label: 'Total Spent', value: formatCurrency(past.reduce((s, b) => s + (b.amount || 0), 0)), icon: Star, color: 'text-amber-400', bg: 'bg-amber-500/10' },
+            { label: 'Conversations', value: chats.length, icon: MessageSquare, color: 'text-accent-400', bg: 'bg-accent-500/10' },
           ].map((s) => (
             <motion.div key={s.label} initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-4">
               <div className={`w-9 h-9 rounded-xl ${s.bg} flex items-center justify-center mb-3`}>
@@ -91,9 +114,8 @@ export default function CustomerDashboard() {
         <div className="flex gap-1 glass-card p-1 mb-6 overflow-x-auto">
           {TABS.map((tab) => (
             <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all flex-shrink-0 ${
-                activeTab === tab.id ? 'bg-brand-500/20 text-brand-400 border border-brand-500/30' : 'text-slate-400 hover:text-white'
-              }`}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all flex-shrink-0 ${activeTab === tab.id ? 'bg-brand-500/20 text-brand-400 border border-brand-500/30' : 'text-slate-400 hover:text-white'
+                }`}
             >
               <tab.icon size={15} />
               {tab.label}
@@ -121,11 +143,11 @@ export default function CustomerDashboard() {
                   </div>
                 </div>
                 <div className="flex items-center gap-3 ml-auto sm:ml-0">
-                  <span className={`badge text-xs ${['upcoming','confirmed','pending'].includes(b.status) ? 'badge-brand' : 'badge-success'}`}>
+                  <span className={`badge text-xs ${['upcoming', 'confirmed', 'pending'].includes(b.status) ? 'badge-brand' : 'badge-success'}`}>
                     {b.status}
                   </span>
                   <span className="font-bold text-white">{formatCurrency(b.amount)}</span>
-                  {['upcoming','confirmed','pending'].includes(b.status) ? (
+                  {['upcoming', 'confirmed', 'pending'].includes(b.status) ? (
                     <button onClick={() => openChat(b.providerId)} className="btn-secondary text-xs py-1.5 px-3">
                       <MessageSquare size={12} />Chat
                     </button>
@@ -159,7 +181,7 @@ export default function CustomerDashboard() {
             )}
             {chats.map((chat) => {
               const partner = chat.lastMessage?.senderId
-              const name    = partner?.name || 'User'
+              const name = partner?.name || 'User'
               const preview = chat.lastMessage?.content || ''
               return (
                 <Link key={chat._id} to={`/messages/${chat._id}`}
